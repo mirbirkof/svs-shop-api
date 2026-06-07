@@ -275,8 +275,21 @@ select.input { background:var(--card); }
 
       <!-- ═══ DASHBOARD ═══ -->
       <div class="page active" id="page-dashboard">
-        <div class="kpi-grid" id="kpi"></div>
-        <div class="grid-2" style="gap:24px">
+        <!-- Salon section -->
+        <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <span class="material-icons-round" style="color:var(--primary)">spa</span>
+          <h3 style="font-size:15px;font-weight:600">Салон SVS Beauty Space</h3>
+        </div>
+        <div class="kpi-grid" id="kpi-salon"></div>
+
+        <!-- Shop section -->
+        <div style="margin:24px 0 8px;display:flex;align-items:center;gap:8px">
+          <span class="material-icons-round" style="color:var(--success)">shopping_bag</span>
+          <h3 style="font-size:15px;font-weight:600">Магазин SVS Beauty World</h3>
+        </div>
+        <div class="kpi-grid" id="kpi-shop"></div>
+
+        <div class="grid-2" style="gap:24px;margin-top:24px">
           <div class="card">
             <div class="card-header"><h3>Топ товарів за виручкою</h3></div>
             <div class="card-body" style="padding:0">
@@ -550,7 +563,20 @@ async function loadDashboard() {
   const s = await api('/api/admin/stats');
   if (!s.ok) return;
   const k = s.stats;
-  document.getElementById('kpi').innerHTML = [
+  const sal = s.salon || {};
+
+  // Salon KPIs
+  document.getElementById('kpi-salon').innerHTML = [
+    ['Записів всього', sal.appointments_total || 0, 'purple'],
+    ['Активних', sal.appointments_active || 0, 'green'],
+    ['За тиждень', sal.appointments_week || 0, 'blue'],
+    ['За місяць', sal.appointments_month || 0, 'blue'],
+    ['Скасовано', sal.appointments_cancelled || 0, 'orange'],
+    ['Чорний список', sal.blacklist || 0, 'red'],
+  ].map(([l, v, c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
+
+  // Shop KPIs
+  document.getElementById('kpi-shop').innerHTML = [
     ['Виручка', k.revenue.toLocaleString() + ' ₴', 'green'],
     ['Оплачено', k.orders_completed, 'blue'],
     ['В очікуванні', k.orders_pending, 'orange'],

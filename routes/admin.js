@@ -367,6 +367,7 @@ router.get('/clients/:id', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const pool = getPool();
+    // Shop stats
     const [r1, r2, r3, r4] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS total, COALESCE(SUM(total),0)::float AS revenue
                   FROM orders WHERE status IN ('paid','packing','shipped','delivered')`),
@@ -374,14 +375,37 @@ router.get('/stats', async (req, res) => {
       pool.query(`SELECT COUNT(*)::int AS clients FROM clients`),
       pool.query(`SELECT COUNT(*)::int AS products FROM products WHERE active = true`),
     ]);
+    // Salon stats (booking tables — same Neon DB)
+    const salonQueries = await Promise.allSettled([
+      pool.query(`SELECT COUNT(*)::int AS total FROM appointments_log`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE status='active'`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE status='cancelled'`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM blacklist`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM scheduled_notifications WHERE status='pending'`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM scheduled_notifications WHERE status='sent'`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE created_at >= NOW() - INTERVAL '7 days'`),
+      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE created_at >= NOW() - INTERVAL '30 days'`),
+    ]);
+    const sv = (i) => salonQueries[i]?.status === 'fulfilled' ? +salonQueries[i].value.rows[0]?.c || +salonQueries[i].value.rows[0]?.total || 0 : 0;
     res.json({
       ok: true,
       stats: {
+        // Shop
         revenue: r1.rows[0].revenue,
         orders_completed: r1.rows[0].total,
         orders_pending: r2.rows[0].pending,
         clients: r3.rows[0].clients,
         products_active: r4.rows[0].products,
+      },
+      salon: {
+        appointments_total: sv(0),
+        appointments_active: sv(1),
+        appointments_cancelled: sv(2),
+        blacklist: sv(3),
+        notifications_pending: sv(4),
+        notifications_sent: sv(5),
+        appointments_week: sv(6),
+        appointments_month: sv(7),
       },
     });
   } catch (e) { console.error('[admin:stats]', e); res.status(500).json({ error: 'internal' }); }
