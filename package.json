@@ -1,7 +1,7 @@
 {
   "name": "svs-shop-backend",
   "version": "1.0.0",
-  "description": "SVS Beauty Space — Shop Backend (Auth + Stripe)",
+  "description": "SVS Beauty Space \u2014 Shop Backend (Auth + Stripe)",
   "main": "shop-api.js",
   "scripts": {
     "start": "node shop-api.js",
@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^9.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
