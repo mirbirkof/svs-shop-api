@@ -275,6 +275,17 @@ router.patch('/orders/:id/status', async (req, res) => {
          VALUES ($1, FLOOR($2 * 0.03)::int, 'order-paid', $3)`,
         [cur.rows[0].client_id, cur.rows[0].total, String(orderId)]
       );
+      // авто-приход в открытую кассовую смену (если есть)
+      try {
+        const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+        if (sh.rows[0]) {
+          await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, description)
+             VALUES ($1,'in','sale_product',$2,'card','order',$3,$4)`,
+            [sh.rows[0].id, cur.rows[0].total, orderId, `Замовлення #${orderId}`]
+          );
+        }
+      } catch (e) { console.warn('[cashbox-auto]', e.message); }
     }
 
     // переход paid → refunded: возвращаем товар, отзываем бонусы
@@ -298,6 +309,17 @@ router.patch('/orders/:id/status', async (req, res) => {
          WHERE id = $1`,
         [cur.rows[0].client_id, cur.rows[0].total]
       );
+      // авто-расход (возврат денег) в открытую смену
+      try {
+        const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+        if (sh.rows[0]) {
+          await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, description)
+             VALUES ($1,'out','refund',$2,'card','order',$3,$4)`,
+            [sh.rows[0].id, cur.rows[0].total, orderId, `Повернення замовлення #${orderId}`]
+          );
+        }
+      } catch (e) { console.warn('[cashbox-auto-refund]', e.message); }
     }
 
     const r = await client.query(
@@ -367,7 +389,6 @@ router.get('/clients/:id', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const pool = getPool();
-    // Shop stats
     const [r1, r2, r3, r4] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS total, COALESCE(SUM(total),0)::float AS revenue
                   FROM orders WHERE status IN ('paid','packing','shipped','delivered')`),
@@ -375,37 +396,14 @@ router.get('/stats', async (req, res) => {
       pool.query(`SELECT COUNT(*)::int AS clients FROM clients`),
       pool.query(`SELECT COUNT(*)::int AS products FROM products WHERE active = true`),
     ]);
-    // Salon stats (booking tables — same Neon DB)
-    const salonQueries = await Promise.allSettled([
-      pool.query(`SELECT COUNT(*)::int AS total FROM appointments_log`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE status='active'`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE status='cancelled'`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM blacklist`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM scheduled_notifications WHERE status='pending'`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM scheduled_notifications WHERE status='sent'`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE created_at >= NOW() - INTERVAL '7 days'`),
-      pool.query(`SELECT COUNT(*)::int AS c FROM appointments_log WHERE created_at >= NOW() - INTERVAL '30 days'`),
-    ]);
-    const sv = (i) => salonQueries[i]?.status === 'fulfilled' ? +salonQueries[i].value.rows[0]?.c || +salonQueries[i].value.rows[0]?.total || 0 : 0;
     res.json({
       ok: true,
       stats: {
-        // Shop
         revenue: r1.rows[0].revenue,
         orders_completed: r1.rows[0].total,
         orders_pending: r2.rows[0].pending,
         clients: r3.rows[0].clients,
         products_active: r4.rows[0].products,
-      },
-      salon: {
-        appointments_total: sv(0),
-        appointments_active: sv(1),
-        appointments_cancelled: sv(2),
-        blacklist: sv(3),
-        notifications_pending: sv(4),
-        notifications_sent: sv(5),
-        appointments_week: sv(6),
-        appointments_month: sv(7),
       },
     });
   } catch (e) { console.error('[admin:stats]', e); res.status(500).json({ error: 'internal' }); }
