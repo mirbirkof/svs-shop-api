@@ -24,6 +24,8 @@ const dikidiRoutes = require('./routes/dikidi-features');
 const payrollRoutes = require('./routes/payroll-stock');
 const loyaltyRoutes = require('./routes/loyalty');
 const scheduleRoutes = require('./routes/schedule');
+const remindersRoutes = require('./routes/reminders');
+const repeatVisitsRoutes = require('./routes/repeat-visits');
 
 const app = express();
 const PORT = process.env.SHOP_API_PORT || process.env.PORT || 3011;
@@ -87,7 +89,7 @@ app.get('/api/shop/readiness', (req, res) => {
       promos: 'ready',
       csv_export: 'ready',
       notifications: 'ready (needs telegram_id on client)',
-      beautypro_sync: 'ready (needs fields param fix)',
+      beautypro_sync: 'ready (fields param OK, awaiting BEAUTYPRO env keys)',
       nova_poshta: 'ready (awaiting api key)',
       mono_pay: 'stub (awaiting api key)',
     },
@@ -99,6 +101,7 @@ app.use('/api/cabinet', cabinetRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/sync', syncRoutes);
+try { app.use('/api/sync', require('./routes/beautypro-sync-v2')); } catch(e) { /* v2 optional */ }
 app.use('/api/np', npRoutes);
 app.use('/api/catalog/legacy', legacyRoutes);
 app.use('/api/notify', notifyRoutes);
@@ -115,6 +118,8 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/schedule', scheduleRoutes);
+app.use('/api/reminders', remindersRoutes);
+app.use('/api/repeat-visits', repeatVisitsRoutes);
 app.use('/api/branches', require('./routes/branches'));
 
 // Mono Pay placeholder — активируется когда MONO_TOKEN задан
@@ -137,4 +142,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[shop-api] listening on http://0.0.0.0:${PORT}`);
   console.log(`[shop-api] DB: ${process.env.DATABASE_URL ? 'connected' : 'MISSING'}`);
+  // Запуск cron напоминаний
+  if (process.env.DATABASE_URL) {
+    remindersRoutes.startCron();
+  }
 });
